@@ -137,7 +137,9 @@ func (r *BadFs) readOperation(name string) error {
 	return nil
 }
 
-// afero Fs interface implementation
+//
+// afero Fs interface implementation, including optional interfaces
+//
 
 func (r *BadFs) Chtimes(n string, a, m time.Time) error {
 	if err := r.writeOperation(n); err != nil {
@@ -172,28 +174,50 @@ func (r *BadFs) Stat(name string) (os.FileInfo, error) {
 	return r.source.Stat(name)
 }
 
-/*
 func (r *BadFs) LstatIfPossible(name string) (os.FileInfo, bool, error) {
-	if lsf, ok := r.source.(Lstater); ok {
+
+	lsf, lsf_ok := r.source.(afero.Lstater)
+
+	if err := r.readOperation(name); err != nil {
+		return nil, lsf_ok, err
+	}
+
+	if lsf_ok {
 		return lsf.LstatIfPossible(name)
 	}
-	fi, err := r.Stat(name)
-	return fi, false, err
+
+	fi, err := r.source.Stat(name)
+	return fi, lsf_ok, err
 }
 
-
 func (r *BadFs) SymlinkIfPossible(oldname, newname string) error {
-	return &os.LinkError{Op: "symlink", Old: oldname, New: newname, Err: ErrNoSymlink}
+
+	slayer, symlink_ok := r.source.(afero.Linker)
+
+	if err := r.writeOperation(oldname); err != nil {
+		return err
+	}
+
+	if symlink_ok {
+		return slayer.SymlinkIfPossible(oldname, newname)
+	}
+
+	return &os.LinkError{Op: "symlink", Old: oldname, New: newname, Err: afero.ErrNoSymlink}
 }
 
 func (r *BadFs) ReadlinkIfPossible(name string) (string, error) {
-	if srdr, ok := r.source.(LinkReader); ok {
+	srdr, rlink_ok := r.source.(afero.LinkReader)
+
+	if err := r.readOperation(name); err != nil {
+		return "", err
+	}
+
+	if rlink_ok {
 		return srdr.ReadlinkIfPossible(name)
 	}
 
-	return "", &os.PathError{Op: "readlink", Path: name, Err: ErrNoReadlink}
+	return "", &os.PathError{Op: "readlink", Path: name, Err: afero.ErrNoReadlink}
 }
-*/
 
 func (r *BadFs) Rename(o, n string) error {
 	if err := r.writeOperation(n); err != nil {

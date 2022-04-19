@@ -148,3 +148,167 @@ func TestBadFsLatency(t *testing.T) {
 	}
 
 }
+
+// Test afero Fs interface
+
+func TestBadFsChtimes(t *testing.T) {
+	const filename = "myTestFile"
+	const writeErrDesc = "write file error"
+	fs := New(afero.NewMemMapFs())
+
+	_, err := fs.Create(filename)
+
+	if err != nil {
+		t.Error("Could not create test file")
+	}
+	now := time.Now()
+	chtime_err := fs.Chtimes(filename, now, now)
+
+	if chtime_err != nil {
+		t.Error("Could not change access and modify times in file test file")
+	}
+
+	fs.AddWriteError(filename, errors.New(writeErrDesc))
+
+	chtime_err = fs.Chtimes(filename, now, now)
+	if chtime_err == nil {
+		t.Error("Chtimes should have returned a write error")
+	}
+
+	if chtime_err.Error() != writeErrDesc {
+		t.Error("Chtimes write error description returned does not match the one added for the test file")
+	}
+
+}
+
+func TestBadFsChmod(t *testing.T) {
+	const filename = "myTestFile"
+	const writeErrDesc = "write file error"
+	fs := New(afero.NewMemMapFs())
+
+	_, err := fs.Create(filename)
+
+	if err != nil {
+		t.Error("Could not create test file")
+	}
+	now := time.Now()
+	chmod_err := fs.Chmod(filename, 0644)
+
+	if chmod_err != nil {
+		t.Error("Could not change file mode for test file")
+	}
+
+	fs.AddWriteError(filename, errors.New(writeErrDesc))
+
+	chmod_err = fs.Chtimes(filename, now, now)
+
+	if chmod_err == nil {
+		t.Error("Chmod should have returned a write error")
+	}
+
+	if chmod_err.Error() != writeErrDesc {
+		t.Error("Chmod write error description returned does not match the one added for the test file")
+	}
+
+}
+
+func TestBadFsChown(t *testing.T) {
+	const filename = "myTestFile"
+	const writeErrDesc = "write file error"
+	const uid = 1010
+	const gid = 1010
+	fs := New(afero.NewMemMapFs())
+
+	_, err := fs.Create(filename)
+
+	if err != nil {
+		t.Error("Could not create test file")
+	}
+
+	chown_err := fs.Chown(filename, uid, gid)
+
+	if chown_err != nil {
+		t.Error("Could not change file owner for test file")
+	}
+
+	fs.AddWriteError(filename, errors.New(writeErrDesc))
+
+	chown_err = fs.Chown(filename, uid, gid)
+
+	if chown_err == nil {
+		t.Error("Chown should have returned a write error")
+	}
+
+	if chown_err.Error() != writeErrDesc {
+		t.Error("Chown write error description returned does not match the one added for the test file")
+	}
+
+}
+
+func TestBadFsStat(t *testing.T) {
+	const filename = "myTestFile"
+	const readErrDesc = "read file error"
+
+	fs := New(afero.NewMemMapFs())
+
+	_, err := fs.Create(filename)
+
+	if err != nil {
+		t.Error("Could not create test file")
+	}
+
+	_, statErr := fs.Stat(filename)
+
+	if statErr != nil {
+		t.Error("Could get FileInfo with Stat for test file")
+	}
+
+	fs.AddReadError(filename, errors.New(readErrDesc))
+
+	_, statErr = fs.Stat(filename)
+
+	if statErr == nil {
+		t.Error("Stat should have returned a read error")
+	}
+
+	if statErr.Error() != readErrDesc {
+		t.Error("Stat read error description returned does not match the one added for the test file")
+	}
+
+}
+
+func TestBadFsLstatIfPossible(t *testing.T) {
+	const filename = "myTestFile"
+	const readErrDesc = "read file error"
+
+	fs := New(afero.NewMemMapFs())
+
+	_, err := fs.Create(filename)
+
+	if err != nil {
+		t.Error("Could not create test file")
+	}
+
+	_, lsfOk, lstatErr := fs.LstatIfPossible(filename)
+
+	if lstatErr != nil {
+		t.Error("Could get FileInfo with LStatIfPossible for test file")
+	}
+
+	if lsfOk != false {
+		t.Error("LstatIfPossible for memfs should have returned false")
+	}
+
+	fs.AddReadError(filename, errors.New(readErrDesc))
+
+	_, _, lstatErr = fs.LstatIfPossible(filename)
+
+	if lstatErr == nil {
+		t.Error("LStatIfPossible should have returned a read error")
+	}
+
+	if lstatErr.Error() != readErrDesc {
+		t.Error("LStatIfPossible read error description returned does not match the one added for the test file")
+	}
+
+}
