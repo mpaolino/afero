@@ -2,6 +2,8 @@ package badfs
 
 import (
 	"errors"
+	"io/fs"
+	"os"
 	"testing"
 	"time"
 
@@ -444,6 +446,84 @@ func TestBadFsReadlinkIfPossible(t *testing.T) {
 
 }
 
+func TestBadRename(t *testing.T) {
+	const filename1 = "myTestFile1"
+	const filename2 = "myTestFile2"
+	const writeErrDesc = "write file error"
+	fs := New(afero.NewMemMapFs())
+
+	_, err := fs.Create(filename1)
+
+	if err != nil {
+		t.Error("Could not create test file")
+	}
+
+	err = fs.Rename(filename1, filename2)
+
+	if err != nil {
+		t.Error("Could not rename test file")
+	}
+
+	fs.AddWriteError(filename2, errors.New(writeErrDesc))
+
+	err = fs.Rename(filename2, filename1)
+
+	if err == nil {
+		t.Error("Rename should have returned a write error")
+	}
+
+	if err.Error() != writeErrDesc {
+		t.Error("Returned write error text does not match the one configured")
+	}
+
+}
+
+func TestBadRemoveAll(t *testing.T) {
+	const filename = "/full/path/filename"
+	const writeErrDesc = "write file error"
+
+	fs := New(afero.NewMemMapFs())
+
+	_, err := fs.Create(filename)
+
+	if err != nil {
+		t.Error("Could not create test file")
+	}
+
+	err = fs.RemoveAll("/")
+
+	if err != nil {
+		t.Errorf("RemoveAll returned error: %s", err)
+	}
+
+	fs.Open(filename)
+
+	// Create it again
+	_, err = fs.Create(filename)
+
+	if err != nil {
+		t.Errorf("Could not create test file: %s", err)
+	}
+
+	fs.AddWriteError(filename, errors.New(writeErrDesc))
+
+	// Try removing but now with full path to file
+
+	err = fs.RemoveAll(filename)
+
+	if err == nil {
+		t.Error("RemoveAll should have returned a write error")
+	}
+
+	err = fs.RemoveAll("/inexistent/path")
+	// MemMapFs does not return error on inexistent directory paths
+
+	if err != nil {
+		t.Error("RemoveAll returned error for inexistent path")
+	}
+
+}
+
 func TestBadRemove(t *testing.T) {
 	const filename = "myTestFile"
 	const writeErrDesc = "write file error"
@@ -480,4 +560,46 @@ func TestBadRemove(t *testing.T) {
 		t.Errorf("Fs should have returned and error getting the deleted write error for temp file, %s", err)
 	}
 
+}
+
+func TestBadOpenFile(t *testing.T) {
+	const errorFreeFilename = "myTestFile"
+	const writeErrorFilename = "myWETestFile"
+	const readErrorFilename = "myRETestFile"
+	const mode fs.FileMode = 0666
+	const writeErrDesc = "write file error"
+	const readErrDesc = "read file error"
+	fs := New(afero.NewMemMapFs())
+
+	file, err := fs.OpenFile(errorFreeFilename, os.O_CREATE, mode)
+	if err != nil {
+		t.Errorf("Error creating test file with no errors: %s", err)
+	}
+	if file.Name() != errorFreeFilename {
+		t.Error("File with no error name does not match the provided test filename")
+	}
+
+	fs.AddWriteError(writeErrorFilename, errors.New(writeErrDesc))
+
+	_, err = fs.OpenFile(writeErrorFilename, os.O_CREATE, mode)
+
+	if err == nil {
+		t.Error("OpenFile should have returned a write error")
+	}
+
+	if err.Error() != writeErrDesc {
+		t.Error("Write error text does not match the configured test error")
+	}
+
+	fs.AddReadError(readErrorFilename, errors.New(readErrDesc))
+
+	_, err = fs.OpenFile(readErrorFilename, os.O_RDONLY, mode)
+
+	if err == nil {
+		t.Error("OpenFile should have returned a read error")
+	}
+
+	if err.Error() != readErrDesc {
+		t.Error("Read error text does not match the configured test error")
+	}
 }

@@ -277,6 +277,13 @@ func (r *BadFs) Rename(o, n string) error {
 }
 
 func (r *BadFs) RemoveAll(p string) error {
+	// We don't split the path and check the directories in the path
+	// to see if one has a write error registered.
+	// If we did we will be changing the underlying wrapped Fs behaviour
+	// since we can't assume that path deletion is atomic and could easily lead
+	// to an unexpected result in the source Fs, where some directories should have being
+	// deleted while others not.
+	// For this reason we only check if the full path has a registered write error
 	p = normalizePath(p)
 
 	if err := r.writeOperation(p); err != nil {
