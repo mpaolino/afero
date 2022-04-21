@@ -342,9 +342,7 @@ func TestBadFsSymlinkIfPossible(t *testing.T) {
 	// Test clean up
 	defer fs.Remove(symlinkName)
 	defer fs.DelWriteError(filename)
-	defer fs.DelReadError(filename)
 	defer fs.DelWriteError(symlinkName)
-	defer fs.DelReadError(symlinkName)
 
 	if err != nil {
 		t.Error("Could not create test file")
@@ -374,6 +372,74 @@ func TestBadFsSymlinkIfPossible(t *testing.T) {
 
 	if symLinkErr.Error() != writeErrDesc {
 		t.Error("SymlinkIfPossible write error text returned does not match the one added for the test file")
+	}
+
+}
+
+func TestBadFsReadlinkIfPossible(t *testing.T) {
+	const readErrDesc = "read file error"
+	// MemMapFs does not support symlinks
+	memFs := New(afero.NewMemMapFs())
+	osFs := New(afero.NewOsFs())
+
+	_, err := memFs.ReadlinkIfPossible("anyname")
+
+	if err == nil {
+		t.Error("Wrapped MemMapFs should return error on ReadlinkifPossible")
+	}
+
+	file, err := afero.TempFile(osFs, "", "afero")
+
+	if err != nil {
+		t.Errorf("Unable to create temp file: %s", err)
+	}
+
+	filename := file.Name()
+	defer osFs.Remove(filename)
+
+	// A crude and slow way to create a unique valid symlink name is to create a temp file and delete it
+	// while keeping its name.
+	symlink, err := afero.TempFile(osFs, "", "afero")
+
+	if err != nil {
+		t.Errorf("Unable to create symlink file: %s", err)
+	}
+
+	symlinkName := symlink.Name()
+	err = osFs.Remove(symlinkName)
+	if err != nil {
+		t.Errorf("Unable to remove symlink temp file: %s", err)
+	}
+
+	// Create symlink
+	err = osFs.SymlinkIfPossible(filename, symlinkName)
+
+	if err != nil {
+		t.Errorf("SymLinkIfPossible returned error: %s", err)
+	}
+	// Test clean up
+	defer osFs.Remove(symlinkName)
+
+	linkName, err := osFs.ReadlinkIfPossible(symlinkName)
+
+	if err != nil {
+		t.Errorf("ReadlinkIfPossible returned error: %s", err)
+	}
+
+	if linkName != filename {
+		t.Error("resolved link file name is different than temp test file name")
+	}
+
+	osFs.AddReadError(symlinkName, errors.New(readErrDesc))
+
+	_, err = osFs.ReadlinkIfPossible(symlinkName)
+
+	if err == nil {
+		t.Errorf("ReadlinkIfPossible should have returned")
+	}
+
+	if err.Error() != readErrDesc {
+		t.Error("Read error text is different than the one configured for symlink")
 	}
 
 }

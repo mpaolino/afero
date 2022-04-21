@@ -117,7 +117,7 @@ func (r *BadFs) delay(name string) {
 func (r *BadFs) checkError(errorMap map[string]*RandomError, name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if randomError, hasError := errorMap[name]; hasError {
+	if randomError, hasError := errorMap[name]; hasError && randomError != nil {
 		return randomError.getError()
 	}
 	return nil
@@ -202,10 +202,10 @@ func (r *BadFs) LstatIfPossible(name string) (os.FileInfo, bool, error) {
 	return fi, lsf_ok, err
 }
 
-func (r *BadFs) copyErrors(oldname, newname string) {
-	r.writeErrors[newname] = r.writeErrors[oldname]
-	r.readErrors[newname] = r.readErrors[oldname]
-	r.latencies[newname] = r.latencies[oldname]
+func (r *BadFs) copyErrors(src, dst string) {
+	r.writeErrors[dst] = r.writeErrors[src]
+	r.readErrors[dst] = r.readErrors[src]
+	r.latencies[dst] = r.latencies[src]
 }
 
 func (r *BadFs) SymlinkIfPossible(name, linkname string) error {
