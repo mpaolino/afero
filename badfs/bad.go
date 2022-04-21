@@ -2,6 +2,7 @@ package badfs
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/spf13/afero"
 
@@ -26,6 +27,19 @@ func New(source afero.Fs) *BadFs {
 		readErrors:  map[string]*RandomError{},
 		latencies:   map[string]time.Duration{},
 		mu:          sync.RWMutex{},
+	}
+}
+
+func normalizePath(path string) string {
+	path = filepath.Clean(path)
+
+	switch path {
+	case ".":
+		return afero.FilePathSeparator
+	case "..":
+		return afero.FilePathSeparator
+	default:
+		return path
 	}
 }
 
@@ -154,6 +168,7 @@ func (r *BadFs) readOperation(name string) error {
 //
 
 func (r *BadFs) Chtimes(n string, a, m time.Time) error {
+	n = normalizePath(n)
 	if err := r.writeOperation(n); err != nil {
 		return err
 	}
@@ -162,6 +177,7 @@ func (r *BadFs) Chtimes(n string, a, m time.Time) error {
 }
 
 func (r *BadFs) Chmod(n string, m os.FileMode) error {
+	n = normalizePath(n)
 	if err := r.writeOperation(n); err != nil {
 		return err
 	}
@@ -169,6 +185,8 @@ func (r *BadFs) Chmod(n string, m os.FileMode) error {
 }
 
 func (r *BadFs) Chown(n string, uid, gid int) error {
+	n = normalizePath(n)
+
 	if err := r.writeOperation(n); err != nil {
 		return err
 	}
@@ -180,6 +198,7 @@ func (r *BadFs) Name() string {
 }
 
 func (r *BadFs) Stat(name string) (os.FileInfo, error) {
+	name = normalizePath(name)
 	if err := r.readOperation(name); err != nil {
 		return nil, err
 	}
@@ -187,7 +206,7 @@ func (r *BadFs) Stat(name string) (os.FileInfo, error) {
 }
 
 func (r *BadFs) LstatIfPossible(name string) (os.FileInfo, bool, error) {
-
+	name = normalizePath(name)
 	lsf, lsf_ok := r.source.(afero.Lstater)
 
 	if err := r.readOperation(name); err != nil {
@@ -208,7 +227,9 @@ func (r *BadFs) copyErrors(src, dst string) {
 	r.latencies[dst] = r.latencies[src]
 }
 
-func (r *BadFs) SymlinkIfPossible(name, linkname string) error {
+func (r *BadFs) SymlinkIfPossible(name, linkName string) error {
+	name = normalizePath(name)
+	linkName = normalizePath(linkName)
 
 	slayer, symlinkOk := r.source.(afero.Linker)
 
@@ -217,19 +238,21 @@ func (r *BadFs) SymlinkIfPossible(name, linkname string) error {
 	}
 
 	if !symlinkOk {
-		return &os.LinkError{Op: "symlink", Old: name, New: linkname, Err: afero.ErrNoSymlink}
+		return &os.LinkError{Op: "symlink", Old: name, New: linkName, Err: afero.ErrNoSymlink}
 	}
 
-	if err := slayer.SymlinkIfPossible(name, linkname); err != nil {
+	if err := slayer.SymlinkIfPossible(name, linkName); err != nil {
 		return err
 	}
 
 	//Symlink successfull, let's add the same errors for the new file that were in the target file
-	r.copyErrors(name, linkname)
+	r.copyErrors(name, linkName)
 	return nil
 }
 
 func (r *BadFs) ReadlinkIfPossible(name string) (string, error) {
+	name = normalizePath(name)
+
 	srdr, rlink_ok := r.source.(afero.LinkReader)
 
 	if err := r.readOperation(name); err != nil {
@@ -244,20 +267,28 @@ func (r *BadFs) ReadlinkIfPossible(name string) (string, error) {
 }
 
 func (r *BadFs) Rename(o, n string) error {
-	if err := r.writeOperation(n); err != nil {
+	o = normalizePath(o)
+	n = normalizePath(n)
+
+	if err := r.writeOperation(o); err != nil {
 		return err
 	}
 	return r.source.Rename(o, n)
 }
 
 func (r *BadFs) RemoveAll(p string) error {
+	p = normalizePath(p)
+
 	if err := r.writeOperation(p); err != nil {
 		return err
 	}
+
 	return r.source.RemoveAll(p)
 }
 
 func (r *BadFs) Remove(n string) error {
+	n = normalizePath(n)
+
 	if err := r.writeOperation(n); err != nil {
 		return err
 	}
@@ -265,6 +296,8 @@ func (r *BadFs) Remove(n string) error {
 }
 
 func (r *BadFs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
+	name = normalizePath(name)
+
 	if flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
 		if err := r.writeOperation(name); err != nil {
 			return nil, err
@@ -279,6 +312,7 @@ func (r *BadFs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, e
 }
 
 func (r *BadFs) Open(name string) (afero.File, error) {
+	name = normalizePath(name)
 	if err := r.readOperation(name); err != nil {
 		return nil, err
 	}
@@ -293,6 +327,8 @@ func (r *BadFs) Open(name string) (afero.File, error) {
 }
 
 func (r *BadFs) Mkdir(n string, p os.FileMode) error {
+	n = normalizePath(n)
+
 	if err := r.writeOperation(n); err != nil {
 		return err
 	}
@@ -300,6 +336,8 @@ func (r *BadFs) Mkdir(n string, p os.FileMode) error {
 }
 
 func (r *BadFs) MkdirAll(n string, p os.FileMode) error {
+	n = normalizePath(n)
+
 	if err := r.writeOperation(n); err != nil {
 		return err
 	}
@@ -307,6 +345,8 @@ func (r *BadFs) MkdirAll(n string, p os.FileMode) error {
 }
 
 func (r *BadFs) Create(name string) (afero.File, error) {
+	name = normalizePath(name)
+
 	if err := r.writeOperation(name); err != nil {
 		return nil, err
 	}
