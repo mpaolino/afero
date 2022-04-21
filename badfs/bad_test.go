@@ -603,3 +603,33 @@ func TestBadOpenFile(t *testing.T) {
 		t.Error("Read error text does not match the configured test error")
 	}
 }
+
+func TestBadOpen(t *testing.T) {
+	const filename = "myTestFile"
+	const readErrorText = "read error text"
+	fs := New(afero.NewMemMapFs())
+
+	_, err := fs.Create(filename)
+
+	if err != nil {
+		t.Errorf("Error creating test file with no errors: %s", err)
+	}
+
+	testFile, err := fs.Open(filename)
+
+	if err != nil {
+		t.Errorf("Could not open test file: %s", err)
+	}
+
+	if testFile.Name() != filename {
+		t.Error("Opened test file name does not match the one created")
+	}
+
+	fs.AddReadError(filename, errors.New(readErrorText))
+
+	_, err = fs.Open(filename)
+
+	if err == nil {
+		t.Errorf("Open failed to return read error for test file")
+	}
+}
