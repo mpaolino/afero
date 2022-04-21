@@ -240,7 +240,7 @@ func TestBadFsChown(t *testing.T) {
 	}
 
 	if chown_err.Error() != writeErrDesc {
-		t.Error("Chown write error description returned does not match the one added for the test file")
+		t.Error("Chown write error text returned does not match the one added for the test file")
 	}
 
 }
@@ -272,7 +272,7 @@ func TestBadFsStat(t *testing.T) {
 	}
 
 	if statErr.Error() != readErrDesc {
-		t.Error("Stat read error description returned does not match the one added for the test file")
+		t.Error("Stat read error text returned does not match the one added for the test file")
 	}
 
 }
@@ -292,7 +292,7 @@ func TestBadFsLstatIfPossible(t *testing.T) {
 	_, lsfOk, lstatErr := fs.LstatIfPossible(filename)
 
 	if lstatErr != nil {
-		t.Error("Could get FileInfo with LStatIfPossible for test file")
+		t.Error("LstatIfPossible returned error for test file")
 	}
 
 	if lsfOk != false {
@@ -308,7 +308,110 @@ func TestBadFsLstatIfPossible(t *testing.T) {
 	}
 
 	if lstatErr.Error() != readErrDesc {
-		t.Error("LStatIfPossible read error description returned does not match the one added for the test file")
+		t.Error("LStatIfPossible read error text returned does not match the one added for the test file")
+	}
+
+}
+
+func TestBadFsSymlinkIfPossible(t *testing.T) {
+	const writeErrDesc = "write file error"
+	const readErrDesc = "read file error"
+
+	fs := New(afero.NewOsFs())
+
+	file, err := afero.TempFile(fs, "", "afero")
+
+	if err != nil {
+		t.Errorf("Unable to create temp file: %s", err)
+	}
+	filename := file.Name()
+	defer fs.Remove(filename)
+
+	// A crude and slow way to create a unique valid symlink name is to create a temp file and delete it
+	// while keeping its name.
+	symlink, err := afero.TempFile(fs, "", "afero")
+	if err != nil {
+		t.Errorf("Unable to create symlink file: %s", err)
+	}
+	symlinkName := symlink.Name()
+	err = fs.Remove(symlinkName)
+	if err != nil {
+		t.Errorf("Unable to remove symlink temp file: %s", err)
+	}
+
+	// Test clean up
+	defer fs.Remove(symlinkName)
+	defer fs.DelWriteError(filename)
+	defer fs.DelReadError(filename)
+	defer fs.DelWriteError(symlinkName)
+	defer fs.DelReadError(symlinkName)
+
+	if err != nil {
+		t.Error("Could not create test file")
+	}
+
+	fs.AddReadError(filename, errors.New(readErrDesc))
+
+	symLinkErr := fs.SymlinkIfPossible(filename, symlinkName)
+
+	if symLinkErr != nil {
+		t.Errorf("SymLinkIfPossible returned error: %s", symLinkErr)
+	}
+
+	symLinkErr = fs.checkReadError(symlinkName)
+
+	if symLinkErr.Error() != readErrDesc {
+		t.Error("SymLinkIfPossible did not copy the read error to the created symlink")
+	}
+
+	fs.AddWriteError(filename, errors.New(writeErrDesc))
+
+	symLinkErr = fs.SymlinkIfPossible(filename, "newTestLink")
+
+	if symLinkErr == nil {
+		t.Error("SymlinkIfPossible should have returned a write error")
+	}
+
+	if symLinkErr.Error() != writeErrDesc {
+		t.Error("SymlinkIfPossible write error text returned does not match the one added for the test file")
+	}
+
+}
+
+func TestBadRemove(t *testing.T) {
+	const filename = "myTestFile"
+	const writeErrDesc = "write file error"
+	fs := New(afero.NewMemMapFs())
+
+	_, err := fs.Create(filename)
+
+	if err != nil {
+		t.Error("Could not create test file")
+	}
+
+	fs.AddWriteError(filename, errors.New(writeErrDesc))
+
+	removeErr := fs.Remove(filename)
+
+	if removeErr == nil {
+		t.Error("Remove should have returned a write error")
+	}
+
+	if removeErr.Error() != writeErrDesc {
+		t.Error("Remove write error text returned does not match the one added for the test file")
+	}
+
+	fs.DelWriteError(filename)
+
+	removeErr = fs.Remove(filename)
+
+	if removeErr != nil {
+		t.Error("Remove returned a write error")
+	}
+
+	_, err = fs.GetWriteError(filename)
+	if err == nil {
+		t.Errorf("Fs should have returned and error getting the deleted write error for temp file, %s", err)
 	}
 
 }

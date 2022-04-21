@@ -65,16 +65,21 @@ func (r *BadFs) AddLatency(name string, latency time.Duration) error {
 	if latency <= 0 {
 		return fmt.Errorf("latency for I/O operations should be positive time durations")
 	}
-
+	r.mu.Lock()
 	r.latencies[name] = latency
+	r.mu.Unlock()
 	return nil
 }
 
 func (r *BadFs) DelLatency(name string) {
+	r.mu.Lock()
 	delete(r.latencies, name)
+	r.mu.Unlock()
 }
 
 func (r *BadFs) GetLatency(name string) (time.Duration, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if latency, hasLatency := r.latencies[name]; hasLatency {
 		return latency, nil
 
@@ -83,7 +88,10 @@ func (r *BadFs) GetLatency(name string) (time.Duration, error) {
 }
 
 func (r *BadFs) getError(errMap map[string]*RandomError, name string) (error, error) {
-	if rErr, hasError := errMap[name]; hasError {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if rErr, hasError := errMap[name]; hasError && rErr != nil {
+		print(fmt.Errorf("rErr: %s", rErr.err.Error()))
 		return rErr.getError(), nil
 
 	}
@@ -99,24 +107,28 @@ func (r *BadFs) GetReadError(name string) (error, error) {
 }
 
 func (r *BadFs) delay(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if latency, hasLatency := r.latencies[name]; hasLatency {
 		time.Sleep(latency)
 	}
 }
 
-func checkError(errors map[string]*RandomError, name string) error {
-	if randomError, hasError := errors[name]; hasError {
+func (r *BadFs) checkError(errorMap map[string]*RandomError, name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if randomError, hasError := errorMap[name]; hasError {
 		return randomError.getError()
 	}
 	return nil
 }
 
 func (r *BadFs) checkWriteError(name string) error {
-	return checkError(r.writeErrors, name)
+	return r.checkError(r.writeErrors, name)
 }
 
 func (r *BadFs) checkReadError(name string) error {
-	return checkError(r.readErrors, name)
+	return r.checkError(r.readErrors, name)
 }
 
 func (r *BadFs) writeOperation(name string) error {
@@ -190,19 +202,31 @@ func (r *BadFs) LstatIfPossible(name string) (os.FileInfo, bool, error) {
 	return fi, lsf_ok, err
 }
 
-func (r *BadFs) SymlinkIfPossible(oldname, newname string) error {
+func (r *BadFs) copyErrors(oldname, newname string) {
+	r.writeErrors[newname] = r.writeErrors[oldname]
+	r.readErrors[newname] = r.readErrors[oldname]
+	r.latencies[newname] = r.latencies[oldname]
+}
 
-	slayer, symlink_ok := r.source.(afero.Linker)
+func (r *BadFs) SymlinkIfPossible(name, linkname string) error {
 
-	if err := r.writeOperation(oldname); err != nil {
+	slayer, symlinkOk := r.source.(afero.Linker)
+
+	if err := r.writeOperation(name); err != nil {
 		return err
 	}
 
-	if symlink_ok {
-		return slayer.SymlinkIfPossible(oldname, newname)
+	if !symlinkOk {
+		return &os.LinkError{Op: "symlink", Old: name, New: linkname, Err: afero.ErrNoSymlink}
 	}
 
-	return &os.LinkError{Op: "symlink", Old: oldname, New: newname, Err: afero.ErrNoSymlink}
+	if err := slayer.SymlinkIfPossible(name, linkname); err != nil {
+		return err
+	}
+
+	//Symlink successfull, let's add the same errors for the new file that were in the target file
+	r.copyErrors(name, linkname)
+	return nil
 }
 
 func (r *BadFs) ReadlinkIfPossible(name string) (string, error) {
