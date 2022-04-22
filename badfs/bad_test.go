@@ -633,3 +633,42 @@ func TestBadOpen(t *testing.T) {
 		t.Errorf("Open failed to return read error for test file")
 	}
 }
+
+func TestBadMkdir(t *testing.T) {
+	const dirname = "directory"
+	const writeErrDirname = "WEDirectory"
+	const writeErrorText = "write error text"
+	const mode os.FileMode = 0755
+
+	fs := New(afero.NewMemMapFs())
+
+	if err := fs.Mkdir(dirname, mode); err != nil {
+		t.Error("Could not create a new directory")
+	}
+
+	info, err := fs.Stat(dirname)
+
+	if err != nil {
+		t.Errorf("Stat returned error: %s", err)
+	}
+
+	if info.Name() != dirname {
+		t.Error("Returned test directory name does not match the created test directory name")
+	}
+
+	if !info.IsDir() {
+		t.Error("Returned FileInfo does not have the directory flag set")
+	}
+
+	dirMode := info.Mode()
+	if dirMode.Perm() != mode.Perm() {
+		t.Error("Returned directory mode does not match the one created")
+	}
+
+	fs.AddWriteError(writeErrDirname, errors.New(writeErrorText))
+
+	if err := fs.Mkdir(writeErrDirname, mode); err == nil {
+		t.Error("Mkdir did not return a write error")
+	}
+
+}
