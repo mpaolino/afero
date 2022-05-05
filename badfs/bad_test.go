@@ -479,8 +479,10 @@ func TestBadRename(t *testing.T) {
 }
 
 func TestBadRemoveAll(t *testing.T) {
-	const filename = "/full/path/filename"
+	const filename = "./full/path/filename"
 	const writeErrDesc = "write file error"
+	const errorDir = "./full/path"
+	const inexistentPath = "/inexistent/path"
 
 	fs := New(afero.NewMemMapFs())
 
@@ -490,13 +492,13 @@ func TestBadRemoveAll(t *testing.T) {
 		t.Error("Could not create test file")
 	}
 
-	err = fs.RemoveAll("/")
+	err = fs.RemoveAll("./full")
 
 	if err != nil {
 		t.Errorf("RemoveAll returned error: %s", err)
 	}
 
-	fs.Open(filename)
+	//fs.Open(filename)
 
 	// Create it again
 	_, err = fs.Create(filename)
@@ -505,18 +507,18 @@ func TestBadRemoveAll(t *testing.T) {
 		t.Errorf("Could not create test file: %s", err)
 	}
 
-	fs.AddWriteError(filename, errors.New(writeErrDesc))
+	fs.AddWriteError(errorDir, errors.New(writeErrDesc))
 
 	// Try removing but now with full path to file
 
-	err = fs.RemoveAll(filename)
+	err = fs.RemoveAll("./full")
 
 	if err == nil {
 		t.Error("RemoveAll should have returned a write error")
 	}
 
-	err = fs.RemoveAll("/inexistent/path")
-	// MemMapFs does not return error on inexistent directory paths
+	err = fs.RemoveAll(inexistentPath)
+	// MemMapFs does not return error on inexistent directory paths nor should BadFs
 
 	if err != nil {
 		t.Error("RemoveAll returned error for inexistent path")
@@ -662,7 +664,7 @@ func TestBadMkdir(t *testing.T) {
 
 	dirMode := info.Mode()
 	if dirMode.Perm() != mode.Perm() {
-		t.Error("Returned directory mode does not match the one created")
+		t.Error("Returned directory permissions does not match the one created")
 	}
 
 	fs.AddWriteError(writeErrDirname, errors.New(writeErrorText))

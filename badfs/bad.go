@@ -3,6 +3,7 @@ package badfs
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/afero"
 
@@ -20,6 +21,8 @@ type BadFs struct {
 	mu          sync.RWMutex
 }
 
+type errorCheck func(string) error
+
 func New(source afero.Fs) *BadFs {
 	return &BadFs{
 		source:      source,
@@ -32,15 +35,17 @@ func New(source afero.Fs) *BadFs {
 
 func normalizePath(path string) string {
 	path = filepath.Clean(path)
-
-	switch path {
-	case ".":
-		return afero.FilePathSeparator
-	case "..":
-		return afero.FilePathSeparator
-	default:
-		return path
-	}
+	/*
+		switch path {
+		case ".":
+			return afero.FilePathSeparator
+		case "..":
+			return afero.FilePathSeparator
+		default:
+			return path
+		}
+	*/
+	return path
 }
 
 func (r *BadFs) AddRandomWriteError(name string, err error, probability float64) {
@@ -50,32 +55,39 @@ func (r *BadFs) AddRandomWriteError(name string, err error, probability float64)
 }
 
 func (r *BadFs) AddWriteError(name string, err error) {
+	name = normalizePath(name)
 	r.AddRandomWriteError(name, err, 1)
 }
 
 func (r *BadFs) DelWriteError(name string) {
+	name = normalizePath(name)
 	r.mu.Lock()
 	delete(r.writeErrors, name)
 	r.mu.Unlock()
 }
 
 func (r *BadFs) AddRandomReadError(name string, err error, probability float64) {
+	name = normalizePath(name)
 	r.mu.Lock()
 	r.readErrors[name] = NewRandomError(err, probability)
 	r.mu.Unlock()
 }
 
 func (r *BadFs) AddReadError(name string, err error) {
+	name = normalizePath(name)
 	r.AddRandomReadError(name, err, 1)
 }
 
 func (r *BadFs) DelReadError(name string) {
+	name = normalizePath(name)
 	r.mu.Lock()
 	delete(r.readErrors, name)
 	r.mu.Unlock()
 }
 
 func (r *BadFs) AddLatency(name string, latency time.Duration) error {
+	name = normalizePath(name)
+
 	if latency <= 0 {
 		return fmt.Errorf("latency for I/O operations should be positive time durations")
 	}
@@ -86,14 +98,16 @@ func (r *BadFs) AddLatency(name string, latency time.Duration) error {
 }
 
 func (r *BadFs) DelLatency(name string) {
+	name = normalizePath(name)
 	r.mu.Lock()
 	delete(r.latencies, name)
 	r.mu.Unlock()
 }
 
 func (r *BadFs) GetLatency(name string) (time.Duration, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	name = normalizePath(name)
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	if latency, hasLatency := r.latencies[name]; hasLatency {
 		return latency, nil
 
@@ -101,9 +115,15 @@ func (r *BadFs) GetLatency(name string) (time.Duration, error) {
 	return 0, fmt.Errorf("no latency registered for '%s'", name)
 }
 
+func (r *BadFs) getLatencies() map[string]time.Duration {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.latencies
+}
+
 func (r *BadFs) getError(errMap map[string]*RandomError, name string) (error, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	if rErr, hasError := errMap[name]; hasError && rErr != nil {
 		print(fmt.Errorf("rErr: %s", rErr.err.Error()))
 		return rErr.getError(), nil
@@ -112,11 +132,27 @@ func (r *BadFs) getError(errMap map[string]*RandomError, name string) (error, er
 	return nil, fmt.Errorf("no error registered for '%s'", name)
 }
 
+func (r *BadFs) getWriteErrors() map[string]*RandomError {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.writeErrors
+}
+
 func (r *BadFs) GetWriteError(name string) (error, error) {
+	name = normalizePath(name)
 	return r.getError(r.writeErrors, name)
 }
 
+func (r *BadFs) GetReadErrors() map[string]*RandomError {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.readErrors
+}
+
 func (r *BadFs) GetReadError(name string) (error, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	name = normalizePath(name)
 	return r.getError(r.readErrors, name)
 }
 
@@ -146,6 +182,7 @@ func (r *BadFs) checkReadError(name string) error {
 }
 
 func (r *BadFs) writeOperation(name string) error {
+	name = normalizePath(name)
 	r.delay(name)
 
 	if err := r.checkWriteError(name); err != nil {
@@ -155,6 +192,7 @@ func (r *BadFs) writeOperation(name string) error {
 }
 
 func (r *BadFs) readOperation(name string) error {
+	name = normalizePath(name)
 	r.delay(name)
 
 	if err := r.checkReadError(name); err != nil {
@@ -276,21 +314,21 @@ func (r *BadFs) Rename(o, n string) error {
 	return r.source.Rename(o, n)
 }
 
-func (r *BadFs) RemoveAll(p string) error {
-	// We don't split the path and check the directories in the path
-	// to see if one has a write error registered.
-	// If we did we will be changing the underlying wrapped Fs behaviour
-	// since we can't assume that path deletion is atomic and could easily lead
-	// to an unexpected result in the source Fs, where some directories should have being
-	// deleted while others not.
-	// For this reason we only check if the full path has a registered write error
-	p = normalizePath(p)
+func (r *BadFs) RemoveAll(path string) error {
+	path = normalizePath(path)
 
-	if err := r.writeOperation(p); err != nil {
-		return err
+	for p := range r.getLatencies() {
+		if p == path || strings.HasPrefix(p, path+afero.FilePathSeparator) {
+			r.delay(p)
+		}
 	}
 
-	return r.source.RemoveAll(p)
+	for p, err := range r.getWriteErrors() {
+		if p == path || strings.HasPrefix(p, path+afero.FilePathSeparator) {
+			return err.getError()
+		}
+	}
+	return r.source.RemoveAll(path)
 }
 
 func (r *BadFs) Remove(n string) error {
@@ -342,18 +380,26 @@ func (r *BadFs) Mkdir(n string, p os.FileMode) error {
 	return r.source.Mkdir(n, p)
 }
 
-func (r *BadFs) MkdirAll(n string, p os.FileMode) error {
-	n = normalizePath(n)
+func (r *BadFs) MkdirAll(path string, perm os.FileMode) error {
+	path = normalizePath(path)
 
-	if err := r.writeOperation(n); err != nil {
-		return err
+	for p := range r.getLatencies() {
+		if p == path || strings.HasPrefix(p, path+afero.FilePathSeparator) {
+			r.delay(p)
+		}
 	}
-	return r.source.MkdirAll(n, p)
+
+	for p, err := range r.getWriteErrors() {
+		if p == path || strings.HasPrefix(p, path+afero.FilePathSeparator) {
+			return err.getError()
+		}
+	}
+
+	return r.source.MkdirAll(path, perm)
+
 }
 
 func (r *BadFs) Create(name string) (afero.File, error) {
-	name = normalizePath(name)
-
 	if err := r.writeOperation(name); err != nil {
 		return nil, err
 	}
