@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -673,4 +674,47 @@ func TestBadMkdir(t *testing.T) {
 		t.Error("Mkdir did not return a write error")
 	}
 
+}
+
+func TestBadMkdirAll(t *testing.T) {
+	const dirname = "/path/to/directory"
+	const writeErrDirname = "/path/fail"
+	const writeErrorText = "write error text"
+	const mode os.FileMode = 0755
+
+	fs := New(afero.NewMemMapFs())
+
+	if err := fs.MkdirAll(dirname, mode); err != nil {
+		t.Error("Could not create a new directory")
+	}
+
+	info, err := fs.Stat(dirname)
+
+	if err != nil {
+		t.Errorf("Stat returned error: %s", err)
+	}
+
+	if info.Name() != filepath.Base(dirname) {
+		t.Error("Returned test directory name does not match the created test directory name")
+	}
+
+	if !info.IsDir() {
+		t.Error("Returned FileInfo does not have the directory flag set")
+	}
+
+	dirMode := info.Mode()
+	if dirMode.Perm() != mode.Perm() {
+		t.Error("Returned directory permissions does not match the one created")
+	}
+
+	fs.AddWriteError(writeErrDirname, errors.New(writeErrorText))
+
+	if err := fs.MkdirAll(writeErrDirname, mode); err == nil {
+		t.Error("MkdirAll did not return a write error")
+	}
+
+}
+
+func TestBadCreate(t *testing.T) {
+	t.Error("Missing test")
 }

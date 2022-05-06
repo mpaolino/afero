@@ -34,18 +34,7 @@ func New(source afero.Fs) *BadFs {
 }
 
 func normalizePath(path string) string {
-	path = filepath.Clean(path)
-	/*
-		switch path {
-		case ".":
-			return afero.FilePathSeparator
-		case "..":
-			return afero.FilePathSeparator
-		default:
-			return path
-		}
-	*/
-	return path
+	return filepath.Clean(path)
 }
 
 func (r *BadFs) AddRandomWriteError(name string, err error, probability float64) {
