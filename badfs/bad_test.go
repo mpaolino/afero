@@ -716,5 +716,42 @@ func TestBadMkdirAll(t *testing.T) {
 }
 
 func TestBadCreate(t *testing.T) {
-	t.Error("Missing test")
+	const filename = "myTestFile"
+	const writeErrorFilename = "myErrorTestFile"
+	const writeErrorText = "write file error"
+	fs := New(afero.NewMemMapFs())
+
+	testFile, err := fs.Create(filename)
+
+	if err != nil {
+		t.Error("Could not create test file")
+	}
+
+	if testFile.Name() != filename {
+		t.Error("Returned filename for created file does not match the one provided")
+	}
+
+	// Lets check if its really there
+	info, err := fs.Stat(filename)
+
+	if err != nil {
+		t.Errorf("Stat on test file returned error: %s", err)
+	}
+
+	if info.Name() != filename {
+		t.Error("Returned filename for created file does not match the one provided")
+	}
+
+	if info.IsDir() {
+		t.Error("Returned FileInfo indicates that the test file is actually a directory")
+	}
+
+	fs.AddWriteError(writeErrorFilename, errors.New(writeErrorText))
+
+	_, err = fs.Create(writeErrorFilename)
+
+	if err == nil {
+		t.Error("Create should have returned an error")
+	}
+
 }
