@@ -13,22 +13,23 @@ import (
 	"time"
 )
 
+type errorMap map[string]error
+type latencyMap map[string]time.Duration
+
 type BadFs struct {
 	source      afero.Fs
-	writeErrors map[string]*RandomError
-	readErrors  map[string]*RandomError
-	latencies   map[string]time.Duration
+	writeErrors errorMap
+	readErrors  errorMap
+	latencies   latencyMap
 	mu          sync.RWMutex
 }
-
-type errorCheck func(string) error
 
 func New(source afero.Fs) *BadFs {
 	return &BadFs{
 		source:      source,
-		writeErrors: map[string]*RandomError{},
-		readErrors:  map[string]*RandomError{},
-		latencies:   map[string]time.Duration{},
+		writeErrors: errorMap{},
+		readErrors:  errorMap{},
+		latencies:   latencyMap{},
 		mu:          sync.RWMutex{},
 	}
 }
@@ -37,15 +38,11 @@ func normalizePath(path string) string {
 	return filepath.Clean(path)
 }
 
-func (r *BadFs) AddRandomWriteError(name string, err error, probability float64) {
-	r.mu.Lock()
-	r.writeErrors[name] = NewRandomError(err, probability)
-	r.mu.Unlock()
-}
-
 func (r *BadFs) AddWriteError(name string, err error) {
 	name = normalizePath(name)
-	r.AddRandomWriteError(name, err, 1)
+	r.mu.Lock()
+	r.writeErrors[name] = err
+	r.mu.Unlock()
 }
 
 func (r *BadFs) DelWriteError(name string) {
@@ -55,16 +52,11 @@ func (r *BadFs) DelWriteError(name string) {
 	r.mu.Unlock()
 }
 
-func (r *BadFs) AddRandomReadError(name string, err error, probability float64) {
-	name = normalizePath(name)
-	r.mu.Lock()
-	r.readErrors[name] = NewRandomError(err, probability)
-	r.mu.Unlock()
-}
-
 func (r *BadFs) AddReadError(name string, err error) {
 	name = normalizePath(name)
-	r.AddRandomReadError(name, err, 1)
+	r.mu.Lock()
+	r.readErrors[name] = err
+	r.mu.Unlock()
 }
 
 func (r *BadFs) DelReadError(name string) {
@@ -104,24 +96,23 @@ func (r *BadFs) GetLatency(name string) (time.Duration, error) {
 	return 0, fmt.Errorf("no latency registered for '%s'", name)
 }
 
-func (r *BadFs) getLatencies() map[string]time.Duration {
+func (r *BadFs) getLatencies() latencyMap {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.latencies
 }
 
-func (r *BadFs) getError(errMap map[string]*RandomError, name string) (error, error) {
+func (r *BadFs) getError(errMap errorMap, name string) (error, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if rErr, hasError := errMap[name]; hasError && rErr != nil {
-		print(fmt.Errorf("rErr: %s", rErr.err.Error()))
-		return rErr.getError(), nil
+	if opErr, hasError := errMap[name]; hasError && opErr != nil {
+		return opErr, nil
 
 	}
 	return nil, fmt.Errorf("no error registered for '%s'", name)
 }
 
-func (r *BadFs) getWriteErrors() map[string]*RandomError {
+func (r *BadFs) getWriteErrors() errorMap {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.writeErrors
@@ -132,7 +123,7 @@ func (r *BadFs) GetWriteError(name string) (error, error) {
 	return r.getError(r.writeErrors, name)
 }
 
-func (r *BadFs) GetReadErrors() map[string]*RandomError {
+func (r *BadFs) GetReadErrors() errorMap {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.readErrors
@@ -153,11 +144,11 @@ func (r *BadFs) delay(name string) {
 	}
 }
 
-func (r *BadFs) checkError(errorMap map[string]*RandomError, name string) error {
+func (r *BadFs) checkError(errMap errorMap, name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if randomError, hasError := errorMap[name]; hasError && randomError != nil {
-		return randomError.getError()
+	if opError, hasError := errMap[name]; hasError && opError != nil {
+		return opError
 	}
 	return nil
 }
@@ -314,7 +305,7 @@ func (r *BadFs) RemoveAll(path string) error {
 
 	for p, err := range r.getWriteErrors() {
 		if p == path || strings.HasPrefix(p, path+afero.FilePathSeparator) {
-			return err.getError()
+			return err
 		}
 	}
 	return r.source.RemoveAll(path)
@@ -356,8 +347,8 @@ func (r *BadFs) Open(name string) (afero.File, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	return NewBadFile(sourceFile, r.readErrors[name], r.writeErrors[name]), nil
+	return sourceFile, nil
+	//return NewBadFile(sourceFile, r.readErrors[name], r.writeErrors[name], r.latencies[name]), nil
 }
 
 func (r *BadFs) Mkdir(n string, p os.FileMode) error {
@@ -380,7 +371,7 @@ func (r *BadFs) MkdirAll(path string, perm os.FileMode) error {
 
 	for p, err := range r.getWriteErrors() {
 		if p == path || strings.HasPrefix(p, path+afero.FilePathSeparator) {
-			return err.getError()
+			return err
 		}
 	}
 
@@ -392,5 +383,7 @@ func (r *BadFs) Create(name string) (afero.File, error) {
 	if err := r.writeOperation(name); err != nil {
 		return nil, err
 	}
+
+	//return NewBadFile(r.source.Create(name), r.)
 	return r.source.Create(name)
 }
