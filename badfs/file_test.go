@@ -232,3 +232,48 @@ func TestBadFsFileStat(t *testing.T) {
 		t.Error("BadFile fileInfo has wrong file name")
 	}
 }
+
+func TestBadFsFileSync(t *testing.T) {
+	const filePath = "/fileTest"
+	const writeErrText = "write error"
+	fs := New(afero.NewMemMapFs())
+	wrappedFile, err := fs.Create(filePath)
+
+	if err != nil {
+		t.Errorf("Could not create file: %s", err)
+	}
+
+	badFile, ok := wrappedFile.(*BadFile)
+
+	if !ok {
+		t.Error("wrappedFile is not a BadFile")
+	}
+
+	err = badFile.Sync()
+	if err != nil {
+		t.Error("BadFile returned error on Sync")
+
+	}
+
+	writeErr := errors.New(writeErrText)
+
+	badFile = wrappedFile.(*BadFile)
+	badFile.AddWriteError(writeErr)
+
+	err = badFile.Sync()
+
+	if err == nil {
+		t.Error("BadFile Sync did not return the read error")
+	}
+
+	if err.Error() != writeErrText {
+		t.Error("Read error text does not match the one configured")
+	}
+
+	badFile.DelWriteError()
+	err = badFile.Sync()
+
+	if err != nil {
+		t.Error("BadFile Stat returned error when it shouldn't")
+	}
+}
