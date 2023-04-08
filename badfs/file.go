@@ -11,7 +11,7 @@ import (
 
 type BadFile struct {
 	afero.File
-	goodFile   afero.File
+	sourceFile afero.File
 	writeError error
 	readError  error
 	latency    time.Duration
@@ -24,7 +24,7 @@ type BadFile struct {
 
 func NewBadFile(goodFile afero.File, readError error, writeError error, latency time.Duration) *BadFile {
 	return &BadFile{
-		goodFile:   goodFile,
+		sourceFile: goodFile,
 		writeError: writeError,
 		readError:  readError,
 		latency:    latency,
@@ -93,12 +93,12 @@ func (b *BadFile) Close() error {
 	if err := b.getWriteError(); err != nil {
 		return err
 	}
-	return b.goodFile.Close()
+	return b.sourceFile.Close()
 }
 
 func (b *BadFile) Name() string {
 	b.delay()
-	return b.goodFile.Name()
+	return b.sourceFile.Name()
 }
 
 func (b *BadFile) Readdirnames(n int) ([]string, error) {
@@ -106,7 +106,7 @@ func (b *BadFile) Readdirnames(n int) ([]string, error) {
 	if err := b.getReadError(); err != nil {
 		return nil, err
 	}
-	return b.goodFile.Readdirnames(n)
+	return b.sourceFile.Readdirnames(n)
 }
 
 func (b *BadFile) Readdir(count int) ([]os.FileInfo, error) {
@@ -114,7 +114,7 @@ func (b *BadFile) Readdir(count int) ([]os.FileInfo, error) {
 	if err := b.getReadError(); err != nil {
 		return nil, err
 	}
-	return b.goodFile.Readdir(count)
+	return b.sourceFile.Readdir(count)
 }
 
 func (b *BadFile) Stat() (os.FileInfo, error) {
@@ -122,7 +122,7 @@ func (b *BadFile) Stat() (os.FileInfo, error) {
 	if err := b.getReadError(); err != nil {
 		return nil, err
 	}
-	return b.goodFile.Stat()
+	return b.sourceFile.Stat()
 }
 
 func (b *BadFile) Sync() error {
@@ -130,7 +130,7 @@ func (b *BadFile) Sync() error {
 	if err := b.getWriteError(); err != nil {
 		return err
 	}
-	return b.goodFile.Sync()
+	return b.sourceFile.Sync()
 }
 
 func (b *BadFile) Truncate(size int64) error {
@@ -138,7 +138,7 @@ func (b *BadFile) Truncate(size int64) error {
 	if err := b.getWriteError(); err != nil {
 		return err
 	}
-	return b.goodFile.Truncate(size)
+	return b.sourceFile.Truncate(size)
 }
 
 func (b *BadFile) WriteString(s string) (ret int, err error) {
@@ -146,5 +146,5 @@ func (b *BadFile) WriteString(s string) (ret int, err error) {
 	if err := b.getWriteError(); err != nil {
 		return -1, err
 	}
-	return b.goodFile.WriteString(s)
+	return b.sourceFile.WriteString(s)
 }

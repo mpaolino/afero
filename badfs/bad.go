@@ -347,8 +347,8 @@ func (r *BadFs) Open(name string) (afero.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sourceFile, nil
-	//return NewBadFile(sourceFile, r.readErrors[name], r.writeErrors[name], r.latencies[name]), nil
+	//return sourceFile, nil
+	return NewBadFile(sourceFile, r.readErrors[name], r.writeErrors[name], r.latencies[name]), nil
 }
 
 func (r *BadFs) Mkdir(n string, p os.FileMode) error {
