@@ -180,3 +180,55 @@ func TestBadFsFileReaddir(t *testing.T) {
 		t.Error("Read error text does not match the one configured")
 	}
 }
+
+func TestBadFsFileStat(t *testing.T) {
+	const filePath = "/fileTest"
+	const readErrText = "read error"
+	fs := New(afero.NewMemMapFs())
+	wrappedFile, err := fs.Create(filePath)
+
+	if err != nil {
+		t.Errorf("Could not create file: %s", err)
+	}
+
+	badFile, ok := wrappedFile.(*BadFile)
+
+	if !ok {
+		t.Error("wrappedFile is not a BadFile")
+	}
+
+	fileInfo, err := badFile.Stat()
+	if err != nil {
+		t.Error("BadFile returned error on Stat")
+
+	}
+	if fileInfo.Name() != "fileTest" {
+		t.Error("BadFile fileInfo has wrong file name")
+	}
+
+	readErr := errors.New(readErrText)
+
+	badFile = wrappedFile.(*BadFile)
+	badFile.AddReadError(readErr)
+
+	_, err = badFile.Stat()
+
+	if err == nil {
+		t.Error("BadFile Stat did not return the read error")
+	}
+
+	if err.Error() != readErrText {
+		t.Error("Read error text does not match the one configured")
+	}
+
+	badFile.DelReadError()
+	fileInfo, err = badFile.Stat()
+
+	if err != nil {
+		t.Error("BadFile Stat returned error when it shouldn't")
+	}
+
+	if fileInfo.Name() != "fileTest" {
+		t.Error("BadFile fileInfo has wrong file name")
+	}
+}
