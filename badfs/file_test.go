@@ -140,3 +140,43 @@ func TestBadFsFileReaddirnames(t *testing.T) {
 		t.Error("Read error text does not match the one configured")
 	}
 }
+
+func TestBadFsFileReaddir(t *testing.T) {
+	const dirPath = "/test/path"
+	const readErrText = "read error"
+	fs := New(afero.NewMemMapFs())
+	err := fs.MkdirAll(dirPath, 0600)
+	if err != nil {
+		t.Errorf("Could not create directory: %s", err)
+	}
+	wrappedFile, err := fs.Open("/")
+	if err != nil {
+		t.Errorf("Could open directory: %s", err)
+	}
+
+	fileInfo, err := wrappedFile.Readdir(1)
+	if err != nil {
+		t.Errorf("Readdirnames returned error: %s", err)
+
+	}
+	if len(fileInfo) != 1 && fileInfo[0].Name() != "test" {
+		t.Error("Readdir returned wrong directory name")
+	}
+	readErr := errors.New(readErrText)
+	badFile, ok := wrappedFile.(*BadFile)
+
+	if !ok {
+		t.Error("wrappedFile is not a BadFile")
+	}
+
+	badFile.AddReadError(readErr)
+
+	_, err = wrappedFile.Readdir(2)
+	if err == nil {
+		t.Error("BadFile Close did not return the read error")
+	}
+
+	if err.Error() != readErrText {
+		t.Error("Read error text does not match the one configured")
+	}
+}
