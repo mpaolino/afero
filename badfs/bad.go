@@ -263,7 +263,7 @@ func (r *BadFs) SymlinkIfPossible(name, linkName string) error {
 		return err
 	}
 
-	//Symlink successfull, let's add the same errors for the new file that were in the target file
+	//Symlink successfull, let's add the same errors for the new file
 	r.copyErrors(name, linkName)
 	return nil
 }
@@ -323,17 +323,28 @@ func (r *BadFs) Remove(n string) error {
 func (r *BadFs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
 	name = normalizePath(name)
 
-	if flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
-		if err := r.writeOperation(name); err != nil {
-			return nil, err
-		}
-		return r.source.OpenFile(name, flag, perm)
+	// Determine whether it's a write operation
+	isWrite := flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0
+
+	// Call the appropriate operation function
+	var opErr error
+	if isWrite {
+		opErr = r.writeOperation(name)
+	} else {
+		opErr = r.readOperation(name)
 	}
 
-	if err := r.readOperation(name); err != nil {
+	// Return the error if there is one
+	if opErr != nil {
+		return nil, opErr
+	}
+
+	sourceFile, err := r.source.OpenFile(name, flag, perm)
+	if err != nil {
 		return nil, err
 	}
-	return r.source.OpenFile(name, flag, perm)
+
+	return NewBadFile(sourceFile, r.readErrors[name], r.writeErrors[name], r.latencies[name]), nil
 }
 
 func (r *BadFs) Open(name string) (afero.File, error) {
@@ -347,7 +358,6 @@ func (r *BadFs) Open(name string) (afero.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	//return sourceFile, nil
 	return NewBadFile(sourceFile, r.readErrors[name], r.writeErrors[name], r.latencies[name]), nil
 }
 
@@ -384,6 +394,10 @@ func (r *BadFs) Create(name string) (afero.File, error) {
 		return nil, err
 	}
 
-	//return NewBadFile(r.source.Create(name), r.)
-	return r.source.Create(name)
+	sourceFile, err := r.source.Create(name)
+
+	if err != nil {
+		return nil, err
+	}
+	return NewBadFile(sourceFile, r.readErrors[name], r.writeErrors[name], r.latencies[name]), nil
 }

@@ -53,16 +53,16 @@ func TestBadFsFileClose(t *testing.T) {
 	const filename = "/fileTest"
 	const writeErrText = "write error"
 	fs := New(afero.NewMemMapFs())
-	sourceFile, err := fs.Create(filename)
+	wrappedFile, err := fs.Create(filename)
 
 	if err != nil {
 		t.Errorf("Could not create file: %s", err)
 	}
 
-	badFile := NewBadFile(sourceFile, nil, nil, 0)
-	if badFile == nil {
+	badFile, ok := wrappedFile.(*BadFile)
 
-		t.Error("BadFile name does not match the test source file")
+	if !ok {
+		t.Error("wrappedFile is not a BadFile")
 	}
 
 	err = badFile.Close()
@@ -72,7 +72,7 @@ func TestBadFsFileClose(t *testing.T) {
 	}
 
 	// Create and Close with write error
-	sourceFile, err = fs.Create(filename)
+	wrappedFile, err = fs.Create(filename)
 
 	if err != nil {
 		t.Errorf("Could not create file: %s", err)
@@ -80,7 +80,8 @@ func TestBadFsFileClose(t *testing.T) {
 
 	writeErr := errors.New(writeErrText)
 
-	badFile = NewBadFile(sourceFile, nil, writeErr, 0)
+	badFile = wrappedFile.(*BadFile)
+	badFile.AddWriteError(writeErr)
 
 	err = badFile.Close()
 
@@ -108,14 +109,12 @@ func TestBadFsFileReaddirnames(t *testing.T) {
 	if err != nil {
 		t.Errorf("Could not create directory: %s", err)
 	}
-	sourceFile, err := fs.Open("/")
+	wrappedFile, err := fs.Open("/")
 	if err != nil {
 		t.Errorf("Could open directory: %s", err)
 	}
 
-	badFile := NewBadFile(sourceFile, nil, nil, 0)
-
-	dirNames, err := badFile.Readdirnames(2)
+	dirNames, err := wrappedFile.Readdirnames(2)
 	if err != nil {
 		t.Errorf("Readdirnames returned error: %s", err)
 
@@ -124,9 +123,15 @@ func TestBadFsFileReaddirnames(t *testing.T) {
 		t.Error("Readdirnames returned wrong directory name")
 	}
 	readErr := errors.New(readErrText)
+	badFile, ok := wrappedFile.(*BadFile)
+
+	if !ok {
+		t.Error("wrappedFile is not a BadFile")
+	}
+
 	badFile.AddReadError(readErr)
 
-	_, err = badFile.Readdirnames(2)
+	_, err = wrappedFile.Readdirnames(2)
 	if err == nil {
 		t.Error("BadFile Close did not return the read error")
 	}
