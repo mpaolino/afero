@@ -141,10 +141,50 @@ func (b *BadFile) Truncate(size int64) error {
 	return b.sourceFile.Truncate(size)
 }
 
+func (b *BadFile) Write(wb []byte) (n int, err error) {
+	b.delay()
+	if err := b.getWriteError(); err != nil {
+		return -1, err
+	}
+	return b.sourceFile.Write(wb)
+}
+
+func (b *BadFile) WriteAt(wb []byte, off int64) (n int, err error) {
+	b.delay()
+	if err := b.getWriteError(); err != nil {
+		return -1, err
+	}
+	return b.sourceFile.WriteAt(wb, off)
+}
+
 func (b *BadFile) WriteString(s string) (ret int, err error) {
 	b.delay()
 	if err := b.getWriteError(); err != nil {
 		return -1, err
 	}
 	return b.sourceFile.WriteString(s)
+}
+
+func (b *BadFile) Read(rb []byte) (n int, err error) {
+	b.delay()
+	if err := b.getReadError(); err != nil {
+		return -1, err
+	}
+	return b.sourceFile.Read(rb)
+}
+
+func (b *BadFile) ReadAt(rb []byte, off int64) (n int, err error) {
+	b.delay()
+	if err := b.getReadError(); err != nil {
+		return -1, err
+	}
+	return b.sourceFile.ReadAt(rb, off)
+}
+
+func (b *BadFile) Seek(offset int64, whence int) (int64, error) {
+	b.delay()
+	if err := b.getReadError(); err != nil {
+		return -1, err
+	}
+	return b.sourceFile.Seek(offset, whence)
 }

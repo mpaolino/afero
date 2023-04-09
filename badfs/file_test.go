@@ -153,6 +153,7 @@ func TestBadFsFileReaddir(t *testing.T) {
 	if err != nil {
 		t.Errorf("Could open directory: %s", err)
 	}
+	defer wrappedFile.Close()
 
 	fileInfo, err := wrappedFile.Readdir(1)
 	if err != nil {
@@ -275,5 +276,59 @@ func TestBadFsFileSync(t *testing.T) {
 
 	if err != nil {
 		t.Error("BadFile Stat returned error when it shouldn't")
+	}
+}
+
+func checkSize(t *testing.T, f afero.File, size int64) {
+	dir, err := f.Stat()
+	if err != nil {
+		t.Fatalf("Stat %q (looking for size %d): %s", f.Name(), size, err)
+	}
+	if dir.Size() != size {
+		t.Errorf("Stat %q: size %d want %d", f.Name(), dir.Size(), size)
+	}
+}
+
+func TestBadFsFileTruncate(t *testing.T) {
+	const writeErrText = "write error"
+	const filePath = "/fileTest"
+	fs := New(afero.NewMemMapFs())
+	wrappedFile, err := fs.Create(filePath)
+
+	if err != nil {
+		t.Errorf("Could not create file: %s", err)
+	}
+
+	badFile, ok := wrappedFile.(*BadFile)
+
+	if !ok {
+		t.Error("wrappedFile is not a BadFile")
+	}
+	checkSize(t, badFile, 0)
+	badFile.Write([]byte("hello, world\n"))
+	checkSize(t, badFile, 13)
+	badFile.Truncate(10)
+	checkSize(t, badFile, 10)
+
+	writeErr := errors.New(writeErrText)
+
+	badFile = wrappedFile.(*BadFile)
+	badFile.AddWriteError(writeErr)
+
+	err = badFile.Truncate(5)
+
+	if err == nil {
+		t.Error("BadFile Truncate did not return the read error")
+	}
+
+	if err.Error() != writeErrText {
+		t.Error("Read error text does not match the one configured")
+	}
+
+	badFile.DelWriteError()
+	err = badFile.Truncate(5)
+
+	if err != nil {
+		t.Error("BadFile Truncate returned error when it shouldn't")
 	}
 }
