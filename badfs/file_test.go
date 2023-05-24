@@ -2,6 +2,7 @@ package badfs
 
 import (
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -331,4 +332,67 @@ func TestBadFsFileTruncate(t *testing.T) {
 	if err != nil {
 		t.Error("BadFile Truncate returned error when it shouldn't")
 	}
+}
+
+func TestBadFsFileWrite(t *testing.T) {
+	const filePath = "/fileTest"
+	fs := New(afero.NewMemMapFs())
+	f, err := fs.Create(filePath)
+	if err != nil {
+		t.Errorf("Could not create file: %s", err)
+	}
+
+	assert := func(expected bool, v ...interface{}) {
+		if !expected {
+			t.Helper()
+			t.Fatal(v...)
+		}
+	}
+	badFile, ok := f.(*BadFile)
+	assert(ok == true, ok)
+
+	data4 := []byte{0, 1, 2, 3}
+	n, err := badFile.Write(data4)
+	assert(err == nil, err)
+	assert(n == len(data4), n)
+	wErr := errors.New("write error")
+	badFile.AddWriteError(wErr)
+	n, err = badFile.Write(data4)
+	assert(err == wErr, err)
+	assert(n == -1, n)
+	badFile.DelWriteError()
+}
+
+func TestBadFsFileSeek(t *testing.T) {
+	const filePath = "/fileTest"
+	fs := New(afero.NewMemMapFs())
+	f, err := fs.Create(filePath)
+	if err != nil {
+		t.Errorf("Could not create file: %s", err)
+	}
+
+	assert := func(expected bool, v ...interface{}) {
+		if !expected {
+			t.Helper()
+			t.Fatal(v...)
+		}
+	}
+	badFile, ok := f.(*BadFile)
+	assert(ok == true, ok)
+
+	data4 := []byte{0, 1, 2, 3}
+	n, err := badFile.Write(data4)
+	assert(err == nil, err)
+	assert(n == len(data4), n)
+	rErr := errors.New("read error")
+	badFile.AddReadError(rErr)
+	var off int64
+	off += int64(n)
+	n64, err := badFile.Seek(-off, io.SeekCurrent)
+	assert(err == rErr, err)
+	assert(n64 == -1, n64)
+	badFile.DelReadError()
+	n64, err = badFile.Seek(-off, io.SeekCurrent)
+	assert(err == nil, err)
+	assert(n64 == 0, n64)
 }
